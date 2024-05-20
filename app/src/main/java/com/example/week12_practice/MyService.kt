@@ -4,16 +4,24 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
 class MyService : Service() {
+    private val binder = LocalBinder()
+    inner class LocalBinder : Binder(){
+        fun getService() = this@MyService
+    }
 
     override fun onBind(intent: Intent): IBinder {
-        TODO("Return the communication channel to the service.")
+        return binder
     }
+
+    var valueInit : Int = 0
+        private set
 
     private val channelID = "service_channel"
 
@@ -38,11 +46,11 @@ class MyService : Service() {
         .build()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(10, createNotification())
+        startForeground(10, createNotification())       // Foreground 서비스 시작, 알림 표시
         val repo = MyRepository(this)
 
-        val str = intent?.getStringExtra("data")
-        repo.valueInternal = str ?: ""
+        valueInit = intent?.getIntExtra("data", 0) ?: 0
+        repo.valueInternal = valueInit.toString()
 
         return super.onStartCommand(intent, flags, startId)
     }

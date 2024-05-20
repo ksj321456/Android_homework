@@ -10,13 +10,19 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import android.Manifest
 import android.Manifest.permission.POST_NOTIFICATIONS
+import android.content.ComponentName
+import android.content.ServiceConnection
 import android.os.Build
+import android.os.IBinder
+import android.widget.TextView
 import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,11 +39,18 @@ class MainActivity : AppCompatActivity() {
             requestSinglePermission(POST_NOTIFICATIONS)
         }
 
-        findViewById<Button>(R.id.button)?.setOnClickListener {
+        findViewById<Button>(R.id.buttonGet)?.setOnClickListener {
             // 1. Started Service
-            val intent = Intent(this, MyService::class.java)
-            intent.putExtra("data", "Hello")
-            startService(intent)    // 서비스 호P
+            val intent = Intent(this, MyService::class.java).also {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(it)
+                } else {
+                    startService(it)
+                }
+            }
+            intent.putExtra("data", 200)
+            findViewById<TextView>(R.id.textView).text = "${MyService}"
+            startService(intent)    // 서비스 호출
         }
 
         // 2. WorkManager
@@ -46,17 +59,43 @@ class MainActivity : AppCompatActivity() {
             setRequiresBatteryNotLow(true)
         }.build()
 
-        val oneTimeWorkRequest = OneTimeWorkRequestBuilder<MyWorker>()
+
+        // 반복 작업 하기
+        val repeatingRequest = PeriodicWorkRequestBuilder<MyWorker>(15, TimeUnit.MINUTES)
             .setConstraints(contraints)
             .build()
 
-        WorkManager.getInstance(this).enqueueUniqueWork(
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "MyWorker",
-            ExistingWorkPolicy.REPLACE,
-            oneTimeWorkRequest
+            ExistingPeriodicWorkPolicy.KEEP,    // 기존에 동일 이름의 worker가 있을 때 처리, keep은 기존 것을 유지한다는 의미
+            repeatingRequest
         )
     }
 
+
+    private var myService : MyService ?= null
+
+    private val serviceConnection = object : ServiceConnection{
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            myService = (service as MyService.LocalBinder).getService() // 바운드 됨
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            myService = null
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        Intent(this, MyService::class.java).also {
+            bindService(it, serviceConnection, BIND_AUTO_CREATE)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        unbindService(serviceConnection)
+    }
     private fun requestSinglePermission(permission: String) {
         if(checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED)
             return
